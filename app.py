@@ -1,3 +1,4 @@
+import base64
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -17,8 +18,12 @@ st.set_page_config(
 )
 
 ARCHIVO_RESERVAS = Path("reservas.csv")
+LOGO_PATH = Path("Logo horizontal.png")
 
-CAPACIDAD_MAXIMA = 6
+# OPCIONAL: pega aquí el enlace de un Google Form
+GOOGLE_FORM_URL = ""
+
+CAPACIDAD_MAXIMA = 3
 DIAS_ANTICIPACION_MAXIMA = 60
 
 HORARIOS = [
@@ -58,19 +63,83 @@ COLUMNAS = [
 
 
 # =========================================================
+# ESTILO / FONDO
+# =========================================================
+
+def imagen_a_base64(ruta: Path) -> str:
+    with open(ruta, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def agregar_estilo_savialab():
+    if LOGO_PATH.exists():
+        logo_base64 = imagen_a_base64(LOGO_PATH)
+
+        fondo = f'''
+        background-image:
+            linear-gradient(rgba(255,255,255,0.93), rgba(255,255,255,0.93)),
+            url("data:image/png;base64,{logo_base64}");
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-size: 52%;
+        background-attachment: fixed;
+        '''
+    else:
+        fondo = "background-color: #F7FAF9;"
+
+    st.markdown(
+        f'''
+        <style>
+        .stApp {{
+            {fondo}
+        }}
+
+        .block-container {{
+            background: rgba(255, 255, 255, 0.90);
+            padding: 2rem 2rem 3rem 2rem;
+            border-radius: 22px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.05);
+        }}
+
+        h1, h2, h3 {{
+            color: #176D68;
+        }}
+
+        div.stButton > button {{
+            border-radius: 12px;
+            font-weight: 700;
+        }}
+
+        div[data-testid="stAlert"] {{
+            border-radius: 14px;
+        }}
+        </style>
+        ''',
+        unsafe_allow_html=True,
+    )
+
+
+agregar_estilo_savialab()
+
+
+# =========================================================
 # FUNCIONES
 # =========================================================
 
 def cargar_reservas():
     if ARCHIVO_RESERVAS.exists():
-        df = pd.read_csv(ARCHIVO_RESERVAS, dtype=str)
+        try:
+            df = pd.read_csv(ARCHIVO_RESERVAS, dtype=str)
 
-        # Garantiza compatibilidad si el CSV fue creado con una versión anterior
-        for columna in COLUMNAS:
-            if columna not in df.columns:
-                df[columna] = ""
+            for columna in COLUMNAS:
+                if columna not in df.columns:
+                    df[columna] = ""
 
-        return df[COLUMNAS]
+            return df[COLUMNAS]
+
+        except Exception:
+            return pd.DataFrame(columns=COLUMNAS)
 
     return pd.DataFrame(columns=COLUMNAS)
 
@@ -114,8 +183,10 @@ def ya_tiene_reserva(reservas, correo, fecha_iso, horario):
     if reservas.empty:
         return False
 
+    correos = reservas["correo"].fillna("").astype(str).str.lower()
+
     coincidencias = reservas[
-        (reservas["correo"].str.lower() == correo.strip().lower())
+        (correos == correo.strip().lower())
         & (reservas["fecha"] == fecha_iso)
         & (reservas["horario"] == horario)
     ]
@@ -141,25 +212,33 @@ def nombre_dia_espanol(fecha):
 
 
 # =========================================================
-# INTERFAZ
+# ENCABEZADO
 # =========================================================
 
-st.title("🧠 Reserva de estación de trabajo – SavIA-Lab")
+if LOGO_PATH.exists():
+    st.image(str(LOGO_PATH), width=330)
+
+st.title("Reserva de estación de trabajo")
 
 st.write(
-    "Seleccione una fecha y una franja horaria para reservar un espacio "
-    "de trabajo en SavIA-Lab."
+    "Seleccione una fecha y una franja horaria para reservar una de las "
+    "estaciones de trabajo disponibles en SavIA-Lab."
 )
 
 st.info(
-    "SavIA-Lab dispone de 6 estaciones de trabajo. "
-    "Cada franja horaria permite un máximo de 6 reservas."
+    "SavIA-Lab dispone de **3 estaciones de trabajo**. "
+    "Cada franja horaria admite un máximo de **3 reservas**."
 )
 
 st.caption(
     "Las reservas están disponibles de lunes a viernes y pueden realizarse "
     f"hasta con {DIAS_ANTICIPACION_MAXIMA} días de anticipación."
 )
+
+
+# =========================================================
+# FECHA Y HORARIO
+# =========================================================
 
 reservas = cargar_reservas()
 
@@ -183,7 +262,10 @@ if fecha_seleccionada.weekday() >= 5:
 fecha_iso = fecha_seleccionada.strftime("%Y-%m-%d")
 dia_semana = nombre_dia_espanol(fecha_seleccionada)
 
-st.write(f"**Día seleccionado:** {dia_semana}, {fecha_seleccionada.strftime('%d/%m/%Y')}")
+st.write(
+    f"**Día seleccionado:** {dia_semana}, "
+    f"{fecha_seleccionada.strftime('%d/%m/%Y')}"
+)
 
 st.subheader("2. Seleccione el horario")
 
@@ -191,9 +273,10 @@ horarios_con_cupo = []
 
 for horario in HORARIOS:
     cupos = cupos_disponibles(reservas, fecha_iso, horario)
+
     if cupos > 0:
         horarios_con_cupo.append(
-            f"{horario} | Cupos disponibles: {cupos}"
+            f"{horario} | Cupos disponibles: {cupos} de {CAPACIDAD_MAXIMA}"
         )
 
 if not horarios_con_cupo:
@@ -208,9 +291,14 @@ horario_seleccionado = st.selectbox(
 horario_limpio = horario_seleccionado.split(" | ")[0]
 
 
+# =========================================================
+# DATOS DE LA PERSONA
+# =========================================================
+
 st.subheader("3. Datos de la persona")
 
 nombre = st.text_input("Nombre completo *")
+
 correo = st.text_input(
     "Correo institucional *",
     placeholder="nombre@universidad.edu.co",
@@ -225,13 +313,16 @@ actividad_otro = ""
 
 if actividad == "Otro":
     actividad_otro = st.text_input(
-        "Indique la actividad",
+        "Indique la actividad *",
         placeholder="Describa brevemente la actividad que realizará",
     )
 
 software = st.text_area(
     "Software, paquetes o librerías requeridas",
-    placeholder="Ejemplo: Python, R, TensorFlow, PyTorch, Cellpose, QuPath, etc.",
+    placeholder=(
+        "Ejemplo: Python, R, TensorFlow, PyTorch, "
+        "Cellpose, QuPath, etc."
+    ),
 )
 
 github = st.text_input(
@@ -286,8 +377,6 @@ if st.button(
     if not acepta:
         errores.append("Debe aceptar las condiciones de la reserva.")
 
-    # Volvemos a leer el archivo justo antes de registrar.
-    # Así reducimos el riesgo de trabajar con datos desactualizados.
     reservas_actuales = cargar_reservas()
 
     cupos = cupos_disponibles(
@@ -339,27 +428,55 @@ if st.button(
 
         st.success("✅ Reserva registrada correctamente.")
 
+        actividad_mostrar = (
+            actividad_otro if actividad == "Otro" else actividad
+        )
+
         st.markdown(
-            f"""
+            f'''
             ### Confirmación de reserva
 
             **Código:** `{codigo}`  
             **Fecha:** {dia_semana}, {fecha_seleccionada.strftime('%d/%m/%Y')}  
             **Horario:** {horario_limpio}  
-            **Actividad:** {actividad if actividad != "Otro" else actividad_otro}  
+            **Actividad:** {actividad_mostrar}  
             **Nombre:** {nombre.strip()}
-            """
+            '''
         )
 
         st.info(
             "Conserve el código de reserva. "
-            "Si requiere modificar o cancelar la reserva, podrá utilizarlo "
-            "cuando se habilite el módulo de administración."
+            "Si necesita modificar o cancelar la reserva, "
+            "comuníquese con SavIA-Lab."
         )
 
+
+# =========================================================
+# GOOGLE FORM OPCIONAL
+# =========================================================
+
+if GOOGLE_FORM_URL.strip():
+    st.divider()
+    st.subheader("Información complementaria")
+
+    st.write(
+        "Si SavIA-Lab requiere información adicional para su actividad, "
+        "puede completar el formulario complementario."
+    )
+
+    st.link_button(
+        "Abrir formulario de SavIA-Lab",
+        GOOGLE_FORM_URL,
+        use_container_width=True,
+    )
+
+
+# =========================================================
+# PIE DE PÁGINA
+# =========================================================
 
 st.divider()
 
 st.caption(
-    "SavIA-Lab · Universidad El Bosque · Sistema interno de reservas"
+    "SavIA-Lab · Universidad El Bosque · Sistema de reservas"
 )
