@@ -482,10 +482,4 @@ st.divider()
 st.caption(
     "SavIA-Lab · Universidad El Bosque · Sistema de reservas"
 )
-"""
 
-path = Path("/mnt/data/app.py")
-path.write_text(code, encoding="utf-8")
-print(f"Archivo creado: {path}")
-
-  
