@@ -1,6 +1,3 @@
-from pathlib import Path
-
-code = r"""import base64
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
