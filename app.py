@@ -30,8 +30,7 @@ CAPACIDAD_MAXIMA = 3
 ESTACIONES = [
     "Estación de trabajo 1",
     "Estación de trabajo 2",
-    "Estación de trabajo 3",
-]
+  ]
 
 DIAS_ANTICIPACION_MAXIMA = 60
 
