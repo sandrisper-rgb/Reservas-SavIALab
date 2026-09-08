@@ -21,10 +21,18 @@ ARCHIVO_RESERVAS = Path("reservas.csv")
 LOGO_PATH = Path("logo_savialab.png")
 
 # OPCIONAL:
-# Pega aquí el enlace de tu Google Form si quieres mostrarlo
+# Pegue aquí el enlace de su Google Form si quiere mostrarlo
 GOOGLE_FORM_URL = ""
 
+# Número de estaciones disponibles
 CAPACIDAD_MAXIMA = 3
+
+ESTACIONES = [
+    "Estación de trabajo 1",
+    "Estación de trabajo 2",
+    "Estación de trabajo 3",
+]
+
 DIAS_ANTICIPACION_MAXIMA = 60
 
 
@@ -57,6 +65,7 @@ COLUMNAS = [
     "fecha",
     "dia_semana",
     "horario",
+    "estacion",
     "actividad",
     "actividad_otro",
     "software",
@@ -72,7 +81,6 @@ COLUMNAS = [
 
 def poner_fondo():
     if LOGO_PATH.exists():
-
         with open(LOGO_PATH, "rb") as f:
             logo_base64 = base64.b64encode(f.read()).decode()
 
@@ -82,14 +90,12 @@ def poner_fondo():
 
             .stApp {{
                 background-color: #ffffff;
-
                 background-image:
                     linear-gradient(
                         rgba(255,255,255,0.82),
                         rgba(255,255,255,0.82)
                     ),
                     url("data:image/png;base64,{logo_base64}");
-
                 background-repeat: no-repeat;
                 background-position: center center;
                 background-size: 65%;
@@ -111,6 +117,7 @@ def poner_fondo():
             div.stButton > button {{
                 border-radius: 12px;
                 font-weight: 700;
+                min-height: 3rem;
             }}
 
             div[data-testid="stAlert"] {{
@@ -119,7 +126,7 @@ def poner_fondo():
 
             </style>
             """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
 
@@ -131,58 +138,47 @@ poner_fondo()
 # =========================================================
 
 def cargar_reservas():
-
     if ARCHIVO_RESERVAS.exists():
-
         try:
-
             df = pd.read_csv(
                 ARCHIVO_RESERVAS,
-                dtype=str
+                dtype=str,
+                encoding="utf-8-sig",
             )
 
-            for columna in COLUMNAS:
+            df = df.fillna("")
 
+            for columna in COLUMNAS:
                 if columna not in df.columns:
                     df[columna] = ""
 
             return df[COLUMNAS]
 
         except Exception:
+            return pd.DataFrame(columns=COLUMNAS)
 
-            return pd.DataFrame(
-                columns=COLUMNAS
-            )
-
-    return pd.DataFrame(
-        columns=COLUMNAS
-    )
+    return pd.DataFrame(columns=COLUMNAS)
 
 
 def guardar_reserva(nueva_reserva):
-
     reservas = cargar_reservas()
 
     reservas = pd.concat(
         [
             reservas,
-            pd.DataFrame([nueva_reserva])
+            pd.DataFrame([nueva_reserva]),
         ],
-        ignore_index=True
+        ignore_index=True,
     )
 
     reservas.to_csv(
         ARCHIVO_RESERVAS,
-        index=False
+        index=False,
+        encoding="utf-8-sig",
     )
 
 
-def cupos_disponibles(
-    reservas,
-    fecha_iso,
-    horario
-):
-
+def cupos_disponibles(reservas, fecha_iso, horario):
     if reservas.empty:
         return CAPACIDAD_MAXIMA
 
@@ -194,12 +190,30 @@ def cupos_disponibles(
 
     return max(
         0,
-        CAPACIDAD_MAXIMA - ocupados
+        CAPACIDAD_MAXIMA - ocupados,
     )
 
 
-def correo_valido(correo):
+def estaciones_disponibles(reservas, fecha_iso, horario):
+    if reservas.empty:
+        return ESTACIONES
 
+    ocupadas = reservas[
+        (reservas["fecha"] == fecha_iso)
+        &
+        (reservas["horario"] == horario)
+    ]["estacion"].fillna("").astype(str).tolist()
+
+    disponibles = [
+        estacion
+        for estacion in ESTACIONES
+        if estacion not in ocupadas
+    ]
+
+    return disponibles
+
+
+def correo_valido(correo):
     patron = (
         r"^[A-Za-z0-9._%+-]+@"
         r"[A-Za-z0-9.-]+\."
@@ -209,31 +223,24 @@ def correo_valido(correo):
     return bool(
         re.match(
             patron,
-            correo.strip()
+            correo.strip(),
         )
     )
 
 
 def github_valido(url):
-
     if not url.strip():
         return True
 
     return url.strip().startswith(
         (
             "https://github.com/",
-            "http://github.com/"
+            "http://github.com/",
         )
     )
 
 
-def ya_tiene_reserva(
-    reservas,
-    correo,
-    fecha_iso,
-    horario
-):
-
+def ya_tiene_reserva(reservas, correo, fecha_iso, horario):
     if reservas.empty:
         return False
 
@@ -256,7 +263,6 @@ def ya_tiene_reserva(
 
 
 def generar_codigo():
-
     return (
         "SAVIA-"
         +
@@ -267,7 +273,6 @@ def generar_codigo():
 
 
 def nombre_dia_espanol(fecha):
-
     dias = {
         0: "Lunes",
         1: "Martes",
@@ -288,10 +293,9 @@ def nombre_dia_espanol(fecha):
 # =========================================================
 
 if LOGO_PATH.exists():
-
     st.image(
         str(LOGO_PATH),
-        width=340
+        width=340,
     )
 
 
@@ -301,16 +305,15 @@ st.title(
 
 
 st.write(
-    "Seleccione una fecha y una franja horaria "
-    "para reservar una de las estaciones de trabajo "
-    "disponibles en SavIA-Lab."
+    "Seleccione una fecha, una franja horaria y una estación "
+    "de trabajo disponible en SavIA-Lab."
 )
 
 
 st.info(
     "SavIA-Lab dispone de **3 estaciones de trabajo**. "
     "Cada franja horaria admite un máximo de "
-    "**3 reservas**."
+    "**3 reservas**, una por cada estación."
 )
 
 
@@ -349,7 +352,6 @@ fecha_seleccionada = st.date_input(
 
 
 if fecha_seleccionada.weekday() >= 5:
-
     st.warning(
         "SavIA-Lab no habilita reservas "
         "los sábados ni domingos. "
@@ -390,15 +392,13 @@ horarios_con_cupo = []
 
 
 for horario in HORARIOS:
-
     cupos = cupos_disponibles(
         reservas,
         fecha_iso,
-        horario
+        horario,
     )
 
     if cupos > 0:
-
         horarios_con_cupo.append(
             f"{horario} | "
             f"Cupos disponibles: "
@@ -408,7 +408,6 @@ for horario in HORARIOS:
 
 
 if not horarios_con_cupo:
-
     st.error(
         "No hay cupos disponibles "
         "para la fecha seleccionada."
@@ -419,7 +418,7 @@ if not horarios_con_cupo:
 
 horario_seleccionado = st.selectbox(
     "Horario disponible",
-    horarios_con_cupo
+    horarios_con_cupo,
 )
 
 
@@ -430,11 +429,101 @@ horario_limpio = (
 
 
 # =========================================================
+# ESTACIÓN DE TRABAJO
+# =========================================================
+
+st.subheader(
+    "3. Seleccione la estación de trabajo"
+)
+
+
+contexto_reserva = f"{fecha_iso}|{horario_limpio}"
+
+if "contexto_reserva" not in st.session_state:
+    st.session_state.contexto_reserva = contexto_reserva
+
+if "estacion_seleccionada" not in st.session_state:
+    st.session_state.estacion_seleccionada = ""
+
+if st.session_state.contexto_reserva != contexto_reserva:
+    st.session_state.contexto_reserva = contexto_reserva
+    st.session_state.estacion_seleccionada = ""
+
+
+disponibles = estaciones_disponibles(
+    reservas,
+    fecha_iso,
+    horario_limpio,
+)
+
+
+if not disponibles:
+    st.error(
+        "No hay estaciones disponibles para este horario."
+    )
+
+    st.stop()
+
+
+if st.session_state.estacion_seleccionada not in disponibles:
+    st.session_state.estacion_seleccionada = ""
+
+
+st.write(
+    "Seleccione una estación disponible para la franja elegida:"
+)
+
+
+cols = st.columns(3)
+
+for i, estacion_nombre in enumerate(ESTACIONES):
+    libre = estacion_nombre in disponibles
+    seleccionada = (
+        st.session_state.estacion_seleccionada
+        ==
+        estacion_nombre
+    )
+
+    if seleccionada:
+        etiqueta = f"✅ {estacion_nombre}"
+        tipo_boton = "primary"
+    elif libre:
+        etiqueta = f"🖥️ {estacion_nombre}"
+        tipo_boton = "secondary"
+    else:
+        etiqueta = f"❌ {estacion_nombre}"
+        tipo_boton = "secondary"
+
+    with cols[i]:
+        if st.button(
+            etiqueta,
+            key=f"boton_{estacion_nombre}",
+            use_container_width=True,
+            type=tipo_boton,
+            disabled=not libre,
+        ):
+            st.session_state.estacion_seleccionada = estacion_nombre
+            st.rerun()
+
+
+estacion = st.session_state.estacion_seleccionada
+
+if estacion:
+    st.success(
+        f"Estación seleccionada: **{estacion}**"
+    )
+else:
+    st.warning(
+        "Debe seleccionar una estación de trabajo disponible."
+    )
+
+
+# =========================================================
 # DATOS PERSONALES
 # =========================================================
 
 st.subheader(
-    "3. Datos de la persona"
+    "4. Datos de la persona"
 )
 
 
@@ -447,13 +536,13 @@ correo = st.text_input(
     "Correo institucional *",
     placeholder=(
         "nombre@universidad.edu.co"
-    )
+    ),
 )
 
 
 actividad = st.selectbox(
     "Actividad principal *",
-    ACTIVIDADES
+    ACTIVIDADES,
 )
 
 
@@ -461,13 +550,12 @@ actividad_otro = ""
 
 
 if actividad == "Otro":
-
     actividad_otro = st.text_input(
         "Indique la actividad *",
         placeholder=(
             "Describa brevemente "
             "la actividad que realizará"
-        )
+        ),
     )
 
 
@@ -476,7 +564,7 @@ software = st.text_area(
     placeholder=(
         "Ejemplo: Python, R, TensorFlow, "
         "PyTorch, Cellpose, QuPath, etc."
-    )
+    ),
 )
 
 
@@ -485,7 +573,7 @@ github = st.text_input(
     placeholder=(
         "https://github.com/"
         "usuario/repositorio"
-    )
+    ),
 )
 
 
@@ -494,9 +582,9 @@ datos_externos = st.radio(
     "para cargue al servidor?",
     [
         "No",
-        "Sí"
+        "Sí",
     ],
-    horizontal=True
+    horizontal=True,
 )
 
 
@@ -505,7 +593,7 @@ observaciones = st.text_area(
     placeholder=(
         "Información que SavIA-Lab "
         "deba conocer antes de su reserva."
-    )
+    ),
 )
 
 
@@ -523,78 +611,80 @@ acepta = st.checkbox(
 if st.button(
     "Registrar reserva",
     type="primary",
-    use_container_width=True
+    use_container_width=True,
 ):
 
     errores = []
 
+    if not estacion:
+        errores.append(
+            "Debe seleccionar una estación de trabajo."
+        )
 
     if not nombre.strip():
-
         errores.append(
             "Debe ingresar su nombre completo."
         )
 
-
     if not correo.strip():
-
         errores.append(
             "Debe ingresar su correo institucional."
         )
 
     elif not correo_valido(correo):
-
         errores.append(
             "El formato del correo electrónico "
             "no es válido."
         )
-
 
     if (
         actividad == "Otro"
         and
         not actividad_otro.strip()
     ):
-
         errores.append(
             "Debe especificar la actividad."
         )
 
-
     if not github_valido(github):
-
         errores.append(
             "El repositorio debe ser una "
             "dirección válida de GitHub."
         )
 
-
     if not acepta:
-
         errores.append(
             "Debe aceptar las condiciones "
             "de la reserva."
         )
 
-
     reservas_actuales = cargar_reservas()
-
 
     cupos = cupos_disponibles(
         reservas_actuales,
         fecha_iso,
-        horario_limpio
+        horario_limpio,
     )
 
+    estaciones_actuales = estaciones_disponibles(
+        reservas_actuales,
+        fecha_iso,
+        horario_limpio,
+    )
 
     if cupos <= 0:
-
         errores.append(
             "La franja seleccionada acaba "
             "de completar su capacidad. "
             "Seleccione otro horario."
         )
 
+    if estacion and estacion not in estaciones_actuales:
+        errores.append(
+            "La estación seleccionada acaba "
+            "de ser reservada por otra persona. "
+            "Seleccione otra estación."
+        )
 
     if (
         correo.strip()
@@ -603,30 +693,22 @@ if st.button(
             reservas_actuales,
             correo,
             fecha_iso,
-            horario_limpio
+            horario_limpio,
         )
     ):
-
         errores.append(
             "Ya existe una reserva con este correo "
             "para la misma fecha y horario."
         )
 
-
     if errores:
-
         for error in errores:
-
             st.error(error)
 
-
     else:
-
         codigo = generar_codigo()
 
-
         nueva_reserva = {
-
             "fecha_registro":
                 datetime.now().strftime(
                     "%Y-%m-%d %H:%M:%S"
@@ -650,6 +732,9 @@ if st.button(
             "horario":
                 horario_limpio,
 
+            "estacion":
+                estacion,
+
             "actividad":
                 actividad,
 
@@ -669,29 +754,23 @@ if st.button(
                 observaciones.strip(),
         }
 
-
         guardar_reserva(
             nueva_reserva
         )
-
 
         st.success(
             "✅ Reserva registrada correctamente."
         )
 
-
         if actividad == "Otro":
-
             actividad_mostrar = (
                 actividad_otro
             )
 
         else:
-
             actividad_mostrar = (
                 actividad
             )
-
 
         st.markdown(
             f"""
@@ -700,17 +779,19 @@ if st.button(
             **Código:** `{codigo}`  
             **Fecha:** {dia_semana}, {fecha_seleccionada.strftime('%d/%m/%Y')}  
             **Horario:** {horario_limpio}  
+            **Estación:** {estacion}  
             **Actividad:** {actividad_mostrar}  
             **Nombre:** {nombre.strip()}
             """
         )
-
 
         st.info(
             "Conserve el código de reserva. "
             "Si necesita modificar o cancelar "
             "la reserva, comuníquese con SavIA-Lab."
         )
+
+        st.session_state.estacion_seleccionada = ""
 
 
 # =========================================================
@@ -734,7 +815,7 @@ if GOOGLE_FORM_URL.strip():
     st.link_button(
         "Abrir formulario de SavIA-Lab",
         GOOGLE_FORM_URL,
-        use_container_width=True
+        use_container_width=True,
     )
 
 
