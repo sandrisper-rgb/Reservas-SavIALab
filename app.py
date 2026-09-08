@@ -310,7 +310,7 @@ st.write(
 
 
 st.info(
-    "SavIA-Lab dispone de **3 estaciones de trabajo**. "
+    "SavIA-Lab dispone de **2 estaciones de trabajo**. "
     "Cada franja horaria admite un máximo de "
     "**3 reservas**, una por cada estación."
 )
