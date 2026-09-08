@@ -25,7 +25,7 @@ LOGO_PATH = Path("logo_savialab.png")
 GOOGLE_FORM_URL = ""
 
 # Número de estaciones disponibles
-CAPACIDAD_MAXIMA = 3
+CAPACIDAD_MAXIMA = 2
 
 ESTACIONES = [
     "Estación de trabajo 1",
